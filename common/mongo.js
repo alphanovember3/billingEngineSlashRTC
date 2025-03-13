@@ -1,4 +1,8 @@
 const { MongoClient } = require("mongodb");
+// import pkg from 'mongodb';
+// const {MongoClient} = pkg;
+// import dotenv from 'dotenv'
+// dotenv.config()
 
 
 require("dotenv").config();
@@ -9,7 +13,7 @@ const options = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   maxPoolSize: 10, 
-  serverSelectionTimeoutMS: 5000, // Timeout if server is unresponsive
+  serverSelectionTimeoutMS: 5000,
 };
 
 
@@ -31,4 +35,4 @@ async function connectDB() {
   return db;
 }
 
-module.exports = {connectDB} ;
+module.exports = {connectDB}
