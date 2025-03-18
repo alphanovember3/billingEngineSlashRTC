@@ -4,14 +4,14 @@ const path = require('path');
 const {connectDB} = require('../common/mongo.js')
 const workerpath = path.join(__dirname, '../controller/worker.js');
 const cron = require('node-cron')
-
+process.env.UV_THREADPOOL_SIZE = 8;
 // Create a pool of 10 workers
 const WORKER_COUNT = 10;
 const workers = [];
 const workerQueue = [];
 let workerTasks = new Map();
 const workerStatus = new Array(WORKER_COUNT).fill(true);
-
+const billDate = process.env.BILL_DATE
 const controller = new AbortController();
 const timeout = 1200000;
 const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -33,6 +33,7 @@ let finalInvoice = {
 };
 
 // Initialize worker pool
+console.log(`total heap memory before before creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
 for (let i = 0; i < WORKER_COUNT; i++) {
   const worker = new Worker(workerpath);
   workers.push(worker);
@@ -62,10 +63,10 @@ for (let i = 0; i < WORKER_COUNT; i++) {
     if (code !== 0){
       handleWorkerExit(worker, code)
       console.error(`Worker stopped with exit code ${code}`);
-    } 
+    }
   });
 }
-
+console.log(`total heap memory after creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
 // Function to assign a task to an available worker
 const assignTask = (worker, workerIndex, data) => {
   workerStatus[workerIndex] = false;
@@ -140,9 +141,9 @@ const processData = (dataChunk) => {
 
 
 
-  cron.schedule('0 24 16 * * *',()=>{
-    insertBillData()
-  })
+  // cron.schedule(`0 ${billDate} 9 * * *`,()=>{
+    // insertBillData()
+  // })
 
   // getClientDetails()
 
@@ -153,11 +154,13 @@ const processData = (dataChunk) => {
         controller.abort();
         process.exit(0);
       });
-
+      console.time("Fetching client details");
       const clientDetails = await getClientDetails()
+      console.timeEnd("Fetching client details");
       console.log(clientDetails)
       let requestBody = getRequestBody()
-      const response = await fetch(clientDetails["clientApi"], {
+      console.time('Fetching data from API');
+      const response = await fetch(clientDetails.clientApi, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${clientDetails.token}`,
@@ -166,7 +169,8 @@ const processData = (dataChunk) => {
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
-
+      // response.body._readableState.highWaterMark = 1024 * 1024;
+      console.timeEnd('Fetching data from API');
       clearTimeout(timeoutId);
       // console.log(response)
       // if (!response.ok) {
@@ -176,13 +180,21 @@ const processData = (dataChunk) => {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      console.time("time for fetching data streams")
+      let batchCompleted = true
       response.body.on('data', (chunk) => {
-        buffer += decoder.decode(chunk, { stream: true });
-
+        if(batchCompleted){
+          console.time("processing 1 batch")
+          batchCompleted=false
+        }
+        // buffer += decoder.decode(chunk, { stream: true });
+        buffer += chunk.toString()
         const parts = buffer.split('\n');
         buffer = parts.pop();
 
         if (parts.length >= 1) {
+          batchCompleted=true
+          console.timeEnd("processing 1 batch")
           processData(parts);
         }
       });
@@ -197,13 +209,15 @@ const processData = (dataChunk) => {
           } catch (error) {
             console.error('Error parsing final buffer',error);
           }
-        
+        console.timeEnd("time for fetching data streams")
         setTimeout(async () => {
           console.log('Total object is:', finalInvoice);
           try {
+            console.time("Inserting into MongoDB");
             const db= await connectDB();
             const collection = db.collection('billData')
             let response= await collection.insert(finalInvoice)
+            console.timeEnd("Inserting into MongoDB");
           } catch (error) {
             console.log("error occured in inserting data to mongo: ",error)
           }
@@ -281,4 +295,6 @@ function getRequestBody(){
   const year = now.getFullYear();
   return {day:date, month: month, year: year };
 }
-// insertBillData()
+console.time("time taken for total data fetching inserting into mongo")
+insertBillData()
+console.timeEnd("time taken for total data fetching inserting into mongo")

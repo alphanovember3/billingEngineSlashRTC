@@ -1,71 +1,43 @@
 // import { parentPort } from 'worker_threads';
+console.time("within a worker")
+// console.log(`total heap before starting operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
 const {parentPort}= require('worker_threads')
-
 // Function to process data and return calculations
 const dataCalculate = (dataChunk) => {
+// console.log(`total heap before starting operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+
   let invoice = {
     outboundInfo: {
       connectedCalls: {
-        premiumDID: {
-          totalCallCount: 0,
-          totalSecUsage: 0,
-          totalPulseCount: 0,
-        },
-        specialDID: {
-          totalCallCount: 0,
-          totalSecUsage: 0,
-          totalPulseCount: 0,
-        },
-        virtualDID: {
-          totalCallCount: 0,
-          totalSecUsage: 0,
-          totalPulseCount: 0,
-          TotalBilledAmount: 0,
-        },
+        premiumDID: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,},
+        specialDID: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,},
+        virtualDID: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,TotalBilledAmount: 0,},
       },
-      dropCalls: {
-        totalCallCount: 0,
-        totalSecUsage: 0,
-        totalPulseCount: 0,
-        TotalBilledAmount: 0,
-      },
-      failedCalls: {
-        totalCallCount: 0,
-        totalSecUsage: 0,
-        totalPulseCount: 0,
-        TotalBilledAmount: 0,
-      },
+      dropCalls: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,TotalBilledAmount: 0,},
+      failedCalls: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,TotalBilledAmount: 0,},
     },
     inboundInfo: {
-      connectedCalls: {
-        totalCallCount: 0,
-        totalSecUsage: 0,
-        totalPulseCount: 0,
-        TotalBilledAmount: 0,
-      },
-      missedCalls: {
-        totalCallCount: 0,
-        totalSecUsage: 0,
-        totalPulseCount: 0,
-        TotalBilledAmount: 0,
-      },
+      connectedCalls: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,TotalBilledAmount: 0,},
+      missedCalls: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,TotalBilledAmount: 0,},
     },
   };
+  console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
 
   try {
     const dataBatch = JSON.parse(dataChunk);
-
+    
     console.log('SIZE OF ARR IS:', dataBatch.length);
     for (let data of dataBatch) {
+      // console.time("time taken for a row")
       try {
         
-          if (data.type == 'disposecall') {
-            if (data.mode_of_calling !== 'Inbound') {
-              // Outbound
-              if (data.agent_talktime_sec > 0) {
-                // connected
-                if (
-                  data.did_number.startsWith('+91079') || data.did_number.startsWith('079')) {
+        if (data.type == 'disposecall') {
+          if (data.mode_of_calling !== 'Inbound') {
+            // Outbound
+            if (data.agent_talktime_sec > 0) {
+              // connected
+              if (
+                data.did_number.startsWith('+91079') || data.did_number.startsWith('079')) {
                   // premium
                   invoice.outboundInfo.connectedCalls.premiumDID.totalCallCount += 1;
                   invoice.outboundInfo.connectedCalls.premiumDID.totalSecUsage += data.agent_talktime_sec;
@@ -110,25 +82,32 @@ const dataCalculate = (dataChunk) => {
             // inbound_drop_cdr
             invoice.inboundInfo.missedCalls.totalCallCount += 1;
           }
-        
-      } catch (innerError) {
-        console.error('Error processing data entry:', innerError);
+          
+        } catch (innerError) {
+          console.error('Error processing data entry:', innerError);
+        }
+        // console.timeEnd("time taken for a row")
       }
+      
+    } catch (error) {
+      console.error('Error parsing input data:', error);
     }
-  } catch (error) {
-    console.error('Error parsing input data:', error);
-  }
-
-  return invoice;
-};
-
-// Listen for data from parent
-parentPort.on('message', (dataChunk) => {
-  try {
-    const result = dataCalculate(dataChunk);
-    parentPort.postMessage(result);
-  } catch (error) {
-    console.error('Error processing data chunk:', dataChunk, error);
-    parentPort.postMessage({ error: 'Failed to process data'});
-  }
-});
+    
+    return invoice;
+  };
+  
+  // Listen for data from parent
+  parentPort.on('message', async (dataChunk) => {
+    console.time("time taken for a batch")
+    console.log(`total heap before starting operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+    try {
+      const result = await dataCalculate(dataChunk);
+      parentPort.postMessage(result);
+    } catch (error) {
+      console.error('Error processing data chunk:', dataChunk, error);
+    }
+    console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+    console.timeEnd("time taken for a batch")
+  });
+  // console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+  console.timeEnd("within a worker")
