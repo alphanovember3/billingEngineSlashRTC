@@ -5,6 +5,6 @@ const controller = require('../controller/billingController');
 
 
 router.get('/users', controller.getAllClients);
-// router.post('/users', controller.createUser);
+router.put('/update', controller.updateClient);
 
 module.exports = router;
