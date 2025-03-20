@@ -1,11 +1,11 @@
 const fetch = require('node-fetch');
+const https = require('https');
 const { Worker } = require('worker_threads');
 const path = require('path');
 const {connectDB} = require('../common/mongo.js')
 const workerpath = path.join(__dirname, '../controller/worker.js');
 const cron = require('node-cron')
 process.env.UV_THREADPOOL_SIZE = 8;
-// Create a pool of 10 workers
 const WORKER_COUNT = 10;
 const workers = [];
 const workerQueue = [];
@@ -43,11 +43,9 @@ for (let i = 0; i < WORKER_COUNT; i++) {
     // Update the calculation
     updatData(result)
 
-    // Mark worker as available
     const workerIndex = workers.indexOf(worker);
     workerStatus[workerIndex] = true;
 
-    // Assign new task if queue is not empty
     if (workerQueue.length > 0) {
       const newTask = workerQueue.shift();
       workerTasks.set(worker,newTask);
@@ -67,7 +65,7 @@ for (let i = 0; i < WORKER_COUNT; i++) {
   });
 }
 console.log(`total heap memory after creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
-// Function to assign a task to an available worker
+
 const assignTask = (worker, workerIndex, data) => {
   workerStatus[workerIndex] = false;
   workerTasks.set(worker,data);
@@ -120,7 +118,7 @@ function handleWorkerExit(worker, code) {
  
 }
 
-// Function to distribute data to workers
+
 const processData = (dataChunk) => {
   const availableWorkerIndex = workerStatus.findIndex((status) => status === true);
 
@@ -169,34 +167,73 @@ const processData = (dataChunk) => {
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
-      // response.body._readableState.highWaterMark = 1024 * 1024;
-      console.timeEnd('Fetching data from API');
+      // const options = {
+      //   method: 'POST',
+      //   headers: {
+      //     Authorization: `Bearer ${token}`,
+      //     'Content-Type': 'application/json',
+      //     'Content-Length': Buffer.byteLength(JSON.stringify(requestBody)),
+      //   },
+      //   highWaterMark: 256 * 1024,
+      // };
+    
+      // const req = https.request(url,options, (res) => {
+
+      
+
+      // console.timeEnd('Fetching data from API');
       clearTimeout(timeoutId);
-      // console.log(response)
+
       // if (!response.ok) {
       //   throw new Error(`HTTP error! Status: ${response.status}`);
       // }
 
       const decoder = new TextDecoder();
+
       let buffer = '';
 
       console.time("time for fetching data streams")
       let batchCompleted = true
+      let count = 0
+      response.body.setEncoding('utf8');
       response.body.on('data', (chunk) => {
+        
+        // console.time("decoding a chunk")
+        // buffer += decoder.decode(chunk, { stream: true });
+        // console.timeEnd("decoding a chunk")
         if(batchCompleted){
-          console.time("processing 1 batch")
+          // console.time("processing 1 batch")
           batchCompleted=false
         }
-        // buffer += decoder.decode(chunk, { stream: true });
-        buffer += chunk.toString()
-        const parts = buffer.split('\n');
-        buffer = parts.pop();
+        // const parts = buffer.split('\n');
+        // buffer = parts.pop();
 
-        if (parts.length >= 1) {
-          batchCompleted=true
-          console.timeEnd("processing 1 batch")
-          processData(parts);
+        // if (parts.length >= 1) {
+        //   batchCompleted=true
+        //   console.timeEnd("processing 1 batch")
+        //   // console.log("chunks required for a batch", count)
+        //   count = 0;
+        //   processData(parts);
+        // }
+
+
+        buffer+= chunk
+        let newlineIndex;
+        while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+          // console.log(count++);
+          const batch = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          if (batch.length>0){
+            console.log(count++);
+              processData(batch);
+              // console.timeEnd("processing 1 batch")
+            } 
         }
+
+
+
+
+
       });
 
       response.body.on('end', () => {
@@ -228,7 +265,6 @@ const processData = (dataChunk) => {
       response.body.on('error', (error) => {
         console.error('Stream error:', error);
       });
-
     } catch (error) {
       if (error.name === 'AbortError') {
         console.error('Request timed out');

@@ -3,7 +3,7 @@ const {connectDB} = require('./common/mongo.js')
 
 require("dotenv").config();
 
-const app = express();
+const app = require('./api/api.js')
 const PORT = process.env.PORT || 3000;
 
 const funct = require('./controller/mongoController')
@@ -14,7 +14,7 @@ const startServer = async () => {
     await connectDB(); 
     console.log("MongoDB connected successfully");
 
-    funct(); 
+    // funct(); 
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

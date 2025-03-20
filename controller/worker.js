@@ -21,12 +21,12 @@ const dataCalculate = (dataChunk) => {
       missedCalls: {totalCallCount: 0,totalSecUsage: 0,totalPulseCount: 0,TotalBilledAmount: 0,},
     },
   };
-  console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+  // console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
 
   try {
     const dataBatch = JSON.parse(dataChunk);
     
-    console.log('SIZE OF ARR IS:', dataBatch.length);
+    // console.log('SIZE OF ARR IS:', dataBatch.length);
     for (let data of dataBatch) {
       // console.time("time taken for a row")
       try {
@@ -98,16 +98,16 @@ const dataCalculate = (dataChunk) => {
   
   // Listen for data from parent
   parentPort.on('message', async (dataChunk) => {
-    console.time("time taken for a batch")
-    console.log(`total heap before starting operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+    // console.time("time taken for a batch")
+    // console.log(`total heap before starting operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
     try {
       const result = await dataCalculate(dataChunk);
       parentPort.postMessage(result);
     } catch (error) {
       console.error('Error processing data chunk:', dataChunk, error);
     }
-    console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
-    console.timeEnd("time taken for a batch")
+    // console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+    // console.timeEnd("time taken for a batch")
   });
   // console.log(`total heap after worker finishing operations: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
   console.timeEnd("within a worker")
