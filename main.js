@@ -6,7 +6,7 @@ require("dotenv").config();
 const app = require('./api/api.js')
 const PORT = process.env.PORT || 3000;
 
-const funct = require('./controller/mongoController')
+// const funct = require('./controller/mongoController')
 app.use(express.json());
 
 const startServer = async () => {

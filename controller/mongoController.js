@@ -5,7 +5,7 @@ const path = require('path');
 const {connectDB} = require('../common/mongo.js')
 const workerpath = path.join(__dirname, '../controller/worker.js');
 const cron = require('node-cron')
-process.env.UV_THREADPOOL_SIZE = 8;
+process.env.UV_THREADPOOL_SIZE = 4;
 const WORKER_COUNT = 10;
 const workers = [];
 const workerQueue = [];
@@ -17,6 +17,17 @@ const timeout = 1200000;
 const timeoutId = setTimeout(() => controller.abort(), timeout);
 
 let finalInvoice = {
+  businessID :0,
+  clientName:"",
+  month:"",
+  year:0,
+  license : {},
+  premiumDidCount:0,
+  premiumDidList:[],
+  specialDidCount:0,
+  specialDidList:[],
+  virtualDidCount:0,
+  virtualDidList:[],
   outboundInfo: {
     connectedCalls: {
       premiumDID: { totalCallCount: 0, totalSecUsage: 0, totalPulseCount: 0 },
@@ -31,6 +42,65 @@ let finalInvoice = {
     missedCalls: { totalCallCount: 0, totalSecUsage: 0, totalPulseCount: 0, TotalBilledAmount: 0 },
   },
 };
+
+const getLicenceCount =async (clientDetails)=>{
+  try {
+    const response = await fetch(clientDetails.licenceApi, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${clientDetails.token}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    const result = await response.json();
+    if (result.success){
+      for(license of result.status){
+        if(license.id==1){finalInvoice.license.agent = license.value}
+        if(license.id==60){finalInvoice.license.admin = license.value}
+        if(license.id==61){finalInvoice.license.supervisor = license.value}
+        if(license.id=62){finalInvoice.license.teamleader = license.value}
+      }
+    }else{
+      console.log("Not getting proper response")
+    }
+  } catch (error) {
+    console.log("error getting license count: ", error)
+  }
+}
+
+const getDidInfo = async(clientDetails)=>{
+  try {
+    const response = await fetch(clientDetails.didInfoApi, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${clientDetails.token}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    const result = await response.json() 
+    if (result.success){
+      const didInfo = result.status.rows;
+      for(did of didInfo){
+        if(did.gateway_caller_id.startsWith('+91079') || did.gateway_caller_id.startsWith('079')){
+          finalInvoice.premiumDidCount +=1;
+          finalInvoice.premiumDidList.push(did.gateway_caller_id)
+        }else if(did.gateway_caller_id.startsWith('+91924') || did.gateway_caller_id.startsWith('924')){
+          finalInvoice.specialDidCount +=1;
+          finalInvoice.specialDidList.push(did.gateway_caller_id)
+        }else{
+          finalInvoice.virtualDidCount +=1;
+          finalInvoice.virtualDidList.push(did.gateway_caller_id)
+        }
+      }
+    }else{
+      console.log("Not getting proper response")
+    }
+  } catch (error) {
+    console.log("error getting Did Information: ", error)
+  }
+}
 
 // Initialize worker pool
 console.log(`total heap memory before before creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
@@ -130,20 +200,11 @@ const processData = (dataChunk) => {
   }
 };
 
-// Main code
-  const url = 'https://l3dev.slashrtc.in/slashRtc/auth/getAllBillingEngine';
-  const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6OTMsImFjY2Vzc2xldmVsIjoyLCJhZ2VudE5hbWUiOiJzbGFzaCBhZG1pbiIsImFnZW50VXNlck5hbWUiOiJzbGFzaGFkbWluIiwiZW1haWwiOiIiLCJjcm1faWQiOiJ2YXJ1bi5tZWhuZGlyYXR0YUBiYWphamZpbnNlcnYuaW4iLCJpYXQiOjE3NDAzNzU5MDIsImV4cCI6MTc0Mjk2NzkwMn0.wm2lnh60-VJ91pjgjXyZxtlB8yKQ9V01S4R_WzXmnpI";
-
- 
-
-
-
 
   // cron.schedule(`0 ${billDate} 9 * * *`,()=>{
     // insertBillData()
   // })
 
-  // getClientDetails()
 
   const insertBillData = async()=>{
     try {
@@ -152,43 +213,37 @@ const processData = (dataChunk) => {
         controller.abort();
         process.exit(0);
       });
+
       console.time("Fetching client details");
       const clientDetails = await getClientDetails()
       console.timeEnd("Fetching client details");
-      console.log(clientDetails)
-      let requestBody = getRequestBody()
-      console.time('Fetching data from API');
-      const response = await fetch(clientDetails.clientApi, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${clientDetails.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      // const options = {
-      //   method: 'POST',
-      //   headers: {
-      //     Authorization: `Bearer ${token}`,
-      //     'Content-Type': 'application/json',
-      //     'Content-Length': Buffer.byteLength(JSON.stringify(requestBody)),
-      //   },
-      //   highWaterMark: 256 * 1024,
-      // };
-    
-      // const req = https.request(url,options, (res) => {
+      if(!clientDetails){
 
-      
-
-      // console.timeEnd('Fetching data from API');
+      }
+        finalInvoice.businessID = clientDetails.businessId;
+        finalInvoice.clientName = clientDetails.clientName;
+        const licenseCount = getLicenceCount(clientDetails);
+        const didInfo = getDidInfo(clientDetails);
+        let requestBody = getRequestBody();
+        finalInvoice.month = requestBody.month;
+        finalInvoice.year = requestBody.year;
+        console.time('Fetching data from API');
+        const response = await fetch(clientDetails.clientApi, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${clientDetails.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+        
       clearTimeout(timeoutId);
 
       // if (!response.ok) {
       //   throw new Error(`HTTP error! Status: ${response.status}`);
       // }
 
-      const decoder = new TextDecoder();
 
       let buffer = '';
 
@@ -198,24 +253,10 @@ const processData = (dataChunk) => {
       response.body.setEncoding('utf8');
       response.body.on('data', (chunk) => {
         
-        // console.time("decoding a chunk")
-        // buffer += decoder.decode(chunk, { stream: true });
-        // console.timeEnd("decoding a chunk")
         if(batchCompleted){
           // console.time("processing 1 batch")
           batchCompleted=false
         }
-        // const parts = buffer.split('\n');
-        // buffer = parts.pop();
-
-        // if (parts.length >= 1) {
-        //   batchCompleted=true
-        //   console.timeEnd("processing 1 batch")
-        //   // console.log("chunks required for a batch", count)
-        //   count = 0;
-        //   processData(parts);
-        // }
-
 
         buffer+= chunk
         let newlineIndex;
@@ -230,14 +271,10 @@ const processData = (dataChunk) => {
             } 
         }
 
-
-
-
-
       });
 
       response.body.on('end', () => {
-          try {
+          try { 
             if(buffer.trim()){
             let parts = buffer.split('\n')
             processData(parts)
@@ -334,3 +371,4 @@ function getRequestBody(){
 console.time("time taken for total data fetching inserting into mongo")
 insertBillData()
 console.timeEnd("time taken for total data fetching inserting into mongo")
+
