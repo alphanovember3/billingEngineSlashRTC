@@ -58,24 +58,48 @@ const getInvoice = async (bId, month, year) => {
   }
 };
 
-const createClient = async(req)=>{
+const getCreateClients = async (req) => {
   try {
-    let {businessId, clientApi, cronDate, token, clientName ,didInfoApi, licenceApi}=req.body;
+    let { businessId, clientApi, cronDate, token, clientName, didInfoApi, licenceApi } = req.body;
     const db = await connectDB();
-    const collection = await db.collection('clientDetails');
+    const collection = db.collection("clientDetails");
+
+    // Check if client already exists
+    const existingClient = await collection.findOne({ businessId });
+    if (existingClient) {
+      throw new Error("Client already exists with this businessId");
+    }
+
     const response = await collection.insertOne({
-          businessId:businessId,
-          clientApi:clientApi,
-          cronDate:cronDate,
-          token:token,
-          clientName:clientName,
-          didInfoApi:didInfoApi,
-          licenceApi:licenceApi
-        });
+      businessId,
+      clientApi,
+      cronDate,
+      token,
+      clientName,
+      didInfoApi,
+      licenceApi,
+      createdAt: new Date(),
+    });
+
     return response;
   } catch (error) {
-    console.log("error occurred in creating client details: ", error);
-    return error;
+    console.error("Error creating client:", error);
+    throw error;
   }
-}
-module.exports = {getClientDetails, getInvoice, getUpdateDetails, createClient}
+};
+
+const getDeleteClient = async (businessId) => {
+  try {
+    const db = await connectDB();
+    const collection = db.collection("clientDetails");
+
+    const deleteResult = await collection.deleteOne({ businessId });
+
+    return deleteResult;
+  } catch (error) {
+    console.error("Error deleting client:", error);
+    throw error;
+  }
+};
+
+module.exports = {getClientDetails, getInvoice, getUpdateDetails, getCreateClients, getDeleteClient}
