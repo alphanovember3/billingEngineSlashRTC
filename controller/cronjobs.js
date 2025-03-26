@@ -303,7 +303,7 @@ const processData = (dataChunk) => {
         console.error('Stream error:', error);
       });
     } catch (error) {
-      crontasks.unshift(clientDetails);
+      cronTasks.unshift(clientDetails);
       if (error.name === 'AbortError') {
         console.error('Request timed out');
       } else {
@@ -369,9 +369,9 @@ function getRequestBody(){
   const year = now.getFullYear();
   return {day:date, month: month, year: year };
 }
-console.time("time taken for total data fetching inserting into mongo")
-insertBillData()
-console.timeEnd("time taken for total data fetching inserting into mongo")
+// console.time("time taken for total data fetching inserting into mongo")
+// insertBillData()
+// console.timeEnd("time taken for total data fetching inserting into mongo")
 
 
 
@@ -382,27 +382,46 @@ console.timeEnd("time taken for total data fetching inserting into mongo")
 
 
 
-const crontasks = [];
+const cronTasks = [];
 let isProcessing = false;
 setInterval(async () => {
-    if (crontasks.length > 0 && !isProcessing) {
-      isProcessing = true;
-      const task = crontasks.shift();
-      await insertBillData(task);
-      isProcessing = false;
-    }
-}, 2*60*60*1000);
-
-
-
-  async function scheduleClientJobs() {
-    const db = await connectDB();
-    const clients = await getClientDetails()
+  console.log("checking the tasks");
   
-    clients.forEach(client => {
-      cron.schedule(`* * ${client.cron} * *`, () => {
-      crontasks.push(client);
-      console.log(`Task added for client ${client.clientName}`);
-      });
-    }); 
+  if (cronTasks.length > 0 && !isProcessing) {
+    isProcessing = true;
+
+    while (cronTasks.length > 0) {
+      const task = cronTasks.shift();
+      await insertBillData(task);
+      console.log(cronTasks)
+    }
+    isProcessing = false;
   }
+}, 10*1000);
+
+
+// cron.schedule("* * * 26 * *",async()=>{
+//   const db = await connectDB();
+//   const clients = await getClientDetails()
+
+//   clients.forEach(client => {
+//     cron.schedule(`* * ${client.cron} * *`, () => {
+//     cronTasks.push(client);
+//     console.log(`Task added for client ${client.clientName}`);
+//     });
+//   }); 
+// })
+
+
+
+async function scheduletask(){
+  const clients = await getClientDetails()
+  clients.forEach(client => {
+    console.log(client)
+    cron.schedule(`48 10 ${client.cronDate} * *`, () => {
+    cronTasks.push(client);
+    console.log(`Task added for client ${client.clientName}`);
+    });
+  }); 
+}
+scheduletask()
