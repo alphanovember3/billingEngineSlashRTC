@@ -14,7 +14,7 @@ const getClientDetails=async ()=>{
 
 const getUpdateDetails = async (req) => {
   try {
-    const { businessId, clientName, clientApi, cronDate, token } = req.body;
+    const { businessId, clientName, clientApi, cronDate, token, didInfoApi, licenceApi, createdAt, } = req.body;
     const db = await connectDB();
     const collection = db.collection('clientDetails');
 
@@ -29,10 +29,14 @@ const getUpdateDetails = async (req) => {
       { "businessId": businessId },
       {
         $set: {
-          clientName,
-          clientApi,
-          cronDate,
-          token
+            businessId,
+            clientName,
+            clientApi,
+            cronDate,
+            token,
+            didInfoApi,
+            licenceApi,
+            createdAt,
         }
       },
       { returnDocument: "after" } // Returns updated document
