@@ -29,7 +29,6 @@ const getUpdateDetails = async (req) => {
       { "businessId": businessId },
       {
         $set: {
-            businessId,
             clientName,
             clientApi,
             cronDate,
