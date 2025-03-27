@@ -142,7 +142,6 @@ const assignTask = (worker, workerIndex, data) => {
   worker.postMessage(data);
 };
 
-
 function handleWorkerExit(worker, code) {
   try {
     const failedTask = workerTasks.get(worker);
@@ -188,7 +187,6 @@ function handleWorkerExit(worker, code) {
  
 }
 
-
 const processData = (dataChunk) => {
   const availableWorkerIndex = workerStatus.findIndex((status) => status === true);
 
@@ -199,12 +197,6 @@ const processData = (dataChunk) => {
     workerQueue.push(dataChunk);
   }
 };
-
-
-  // cron.schedule(`0 ${billDate} 9 * * *`,()=>{
-    // insertBillData()
-  // })
-
 
   const insertBillData = async()=>{
     try {
@@ -372,3 +364,71 @@ console.time("time taken for total data fetching inserting into mongo")
 insertBillData()
 console.timeEnd("time taken for total data fetching inserting into mongo")
 
+function handleWorkerExit(worker, code) {
+  try {
+    const failedTask = workerTasks.get(worker);
+    const workerIndex = workers.indexOf(worker);
+    
+    // Validate indices and tasks
+    if (workerIndex === -1) {
+      console.error('Worker not found in workers array');
+      return;
+    }
+
+    // Log the crash with more context
+    console.error(`Worker ${workerIndex} crashed with exit code ${code}`);
+    console.error('Failed task:', failedTask ? 'Task found' : 'No task found');
+    
+    // Clean up the crashed worker
+    workers[workerIndex] = null;  // Mark as null instead of deleting
+    workerTasks.delete(worker);
+    
+    // Requeue the failed task if it exists
+    if (failedTask) {
+      workerQueue.unshift(failedTask);
+    }
+    
+    // Create new worker
+    const newWorker = new Worker(workerpath);
+    workers[workerIndex] = newWorker;
+    workerStatus[workerIndex] = true;
+    
+    // Set up event handlers for new worker
+    newWorker.on("message", (result) => {
+      updateData(result);
+      workerStatus[workerIndex] = true;
+      
+      if (workerQueue.length > 0) {
+        const newTask = workerQueue.shift();
+        assignTask(newWorker, workerIndex, newTask);
+      }
+    });
+
+    newWorker.on("error", (err) => {
+      console.error(`New worker ${workerIndex} error:`, err);
+    });
+
+    newWorker.on("exit", (code) => {
+      if (code !== 0) {
+        handleWorkerExit(newWorker, code);
+      }
+    });
+
+  } catch (error) {
+    console.error("Critical error in handleWorkerExit:", error);
+    console.error("Stack trace:", error.stack);
+    
+    // Attempt to recover the system state
+    try {
+      // Clean up any dangling references
+      const workerIndex = workers.indexOf(worker);
+      if (workerIndex !== -1) {
+        workers[workerIndex] = null;
+        workerStatus[workerIndex] = true;
+      }
+      workerTasks.delete(worker);
+    } catch (cleanupError) {
+      console.error("Failed to clean up after error:", cleanupError);
+    }
+  }
+}
