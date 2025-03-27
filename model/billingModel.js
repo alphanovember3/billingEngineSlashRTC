@@ -18,7 +18,7 @@ const getUpdateDetails = async (req) => {
     const db = await connectDB();
     const collection = db.collection('clientDetails');
 
-    const existingClient = await collection.findOne({ businessId });
+    const existingClient = await collection.findOne({ "businessId": businessId });
 
     if (!existingClient) {
       console.log("Client not found");
@@ -26,7 +26,7 @@ const getUpdateDetails = async (req) => {
     }
     // Update the document and return the modified version
     const response = await collection.findOneAndUpdate(
-      { businessId },
+      { "businessId": businessId },
       {
         $set: {
           clientName,
