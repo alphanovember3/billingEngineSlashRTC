@@ -28,14 +28,16 @@ const getInvoice = async (req, res) => {
 
 const updateClient = async (req, res) => {
   try {
-      console.log('Request Body:', req.body)
-      const updatedClient = await User.getUpdateDetails(req);
-      if (!updatedClient) {
-          return res.status(404).json({ message: "Client not found" });
-      }
-      res.status(200).json({ message: "Client updated successfully", data: updatedClient });
+    console.log('Request Body:', req.body);
+    const updatedClient = await User.getUpdateDetails(req);
+
+    if (!updatedClient) {
+      return res.status(404).json({ message: "Client not found or no changes made" });
+    }
+
+    res.status(200).json({ message: "Client updated successfully", data: updatedClient });
   } catch (error) {
-      res.status(500).json({ message: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 

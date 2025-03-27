@@ -16,22 +16,32 @@ const getUpdateDetails = async (req) => {
   try {
     const { businessId, clientName, clientApi, cronDate, token } = req.body;
     const db = await connectDB();
-    const collection = await db.collection('clientDetails');
-    const response = await collection.updateOne(
-      { "businessId": businessId },  
+    const collection = db.collection('clientDetails');
+
+    const existingClient = await collection.findOne({ businessId });
+
+    if (!existingClient) {
+      console.log("Client not found");
+      return null;
+    }
+    // Update the document and return the modified version
+    const response = await collection.findOneAndUpdate(
+      { businessId },
       {
         $set: {
-          "clientName": clientName,
-          "clientApi": clientApi,
-          "cronDate": cronDate,
-          "token": token
+          clientName,
+          clientApi,
+          cronDate,
+          token
         }
-      }
+      },
+      { returnDocument: "after" } // Returns updated document
     );
-    return response;
+
+    return response.value; // Return the updated document
   } catch (error) {
-    console.log("error occurred in updating client details: ", error);
-    return [];
+    console.log("Error occurred in updating client details: ", error);
+    return null;
   }
 };
 
