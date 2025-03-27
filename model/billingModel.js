@@ -35,7 +35,6 @@ const getUpdateDetails = async (req) => {
             token,
             didInfoApi,
             licenceApi,
-            createdAt,
         }
       },
       { returnDocument: "after" } // Returns updated document
