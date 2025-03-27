@@ -14,7 +14,7 @@ const getClientDetails=async ()=>{
 
 const getUpdateDetails = async (req) => {
   try {
-    const { businessId, clientName, clientApi, cronDate, token, didInfoApi, licenceApi, createdAt, } = req.body;
+    const { businessId, clientName, clientApi, cronDate, token, didInfoApi, licenceApi } = req.body;
     const db = await connectDB();
     const collection = db.collection('clientDetails');
 
