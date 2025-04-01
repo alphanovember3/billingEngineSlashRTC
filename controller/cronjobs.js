@@ -11,6 +11,7 @@ const controller = new AbortController();
 const timeout = 1200000;
 const timeoutId = setTimeout(() => controller.abort(), timeout);
 const { v4: uuidv4 } = require('uuid');
+const { isArray } = require('util');
 
 // const final = {
 //   businessID :0,
@@ -75,6 +76,8 @@ const { v4: uuidv4 } = require('uuid');
                     };
 
     function updateData(result){
+      try {
+        console.log("updating data")
       finalInvoice.outboundInfo.connectedCalls.premiumDID.totalCallCount += result.outboundInfo.connectedCalls.premiumDID.totalCallCount;
       finalInvoice.outboundInfo.connectedCalls.premiumDID.totalSecUsage += result.outboundInfo.connectedCalls.premiumDID.totalSecUsage;
       finalInvoice.outboundInfo.connectedCalls.premiumDID.totalPulseCount += result.outboundInfo.connectedCalls.premiumDID.totalPulseCount;
@@ -107,6 +110,9 @@ const { v4: uuidv4 } = require('uuid');
       finalInvoice.inboundInfo.missedCalls.totalSecUsage += result.inboundInfo.missedCalls.totalSecUsage;
       finalInvoice.inboundInfo.missedCalls.totalPulseCount += result.inboundInfo.missedCalls.totalPulseCount;
       finalInvoice.inboundInfo.missedCalls.TotalBilledAmount += result.inboundInfo.missedCalls.TotalBilledAmount;
+    } catch (error) {
+        console.log("Error occured in updating result: ", error)
+    }
     }
 
     const getLicenceCount =async (clientDetails)=>{
@@ -121,14 +127,15 @@ const { v4: uuidv4 } = require('uuid');
         });
         const result = await response.json();
         if (result.success){
-          for(license of result.status){
+          for(const license of result.status){
             if(license.id==1){finalInvoice.license.agent = license.value}
             if(license.id==60){finalInvoice.license.admin = license.value}
             if(license.id==61){finalInvoice.license.supervisor = license.value}
             if(license.id==62){finalInvoice.license.teamleader = license.value}
           }
+          console.log("fetched License count successfuly")
         }else{
-          console.log("Not getting proper response")
+          console.log("Unable to fetch license count")
         }
       } catch (error) {
         console.log("error getting license count: ", error)
@@ -148,7 +155,7 @@ const { v4: uuidv4 } = require('uuid');
         const result = await response.json() 
         if (result.success){
           const didInfo = result.status.rows;
-          for(did of didInfo){
+          for(let did of didInfo){
             if(did.gateway_caller_id.startsWith('+91079') || did.gateway_caller_id.startsWith('079')){
               finalInvoice.premiumDidCount +=1;
               finalInvoice.premiumDidList.push(did.gateway_caller_id)
@@ -160,8 +167,9 @@ const { v4: uuidv4 } = require('uuid');
               finalInvoice.virtualDidList.push(did.gateway_caller_id)
             }
           }
+          console.log("Client did information fethed succesfully!")
         }else{
-          console.log("Not getting proper response")
+          console.log("Unable to fetch did information of client")
         }
       } catch (error) {
         console.log("error getting Did Information: ", error)
@@ -189,11 +197,11 @@ const { v4: uuidv4 } = require('uuid');
                 resolve();
               }, 1000); 
     
-              worker.once('message', () => {
-                clearTimeout(timeout);
-                worker.terminate();
-                resolve();
-              });
+              // worker.once('message', () => {
+              //   clearTimeout(timeout);
+              //   worker.terminate();
+              //   resolve();
+              // });
             }
           });
         }));
@@ -213,13 +221,20 @@ const { v4: uuidv4 } = require('uuid');
     return new Promise(async (resolve, reject)=>{
 
       const insertInvoice = async ()=>{
-        console.log('Total object is:', finalInvoice);
         try {
           finalInvoice._id = uuidv4()
+          console.log('Total object is: ',finalInvoice);
           const db= await connectDB();
-          const collection = db.collection('billData')
-          let response = await collection.insertOne(finalInvoice)
-          cleanupWorkers()
+          const collection = db.collection("billData");
+          let response = await collection.insertOne(finalInvoice);
+
+            const cronUpdate =await db.collection("clientDetails");
+            let result = cronUpdate.findOneAndUpdate(
+              { businessId: clientDetails.businessId },
+              { $set: { createdAt: new Date() } },
+              { returnDocument: "after" }
+            );
+            console.log("result :",result)
           resolve(response)
         } catch (error) {
           console.log("error occured in inserting data to mongo: ",error)
@@ -227,8 +242,11 @@ const { v4: uuidv4 } = require('uuid');
         }
       }
 
-
+      if(clientDetails.lenth>0 || !clientDetails){
+        reject()
+      }
       // console.log(`total heap memory before before creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+      console.log("crreating workers")
       for (let i = 0; i < WORKER_COUNT; i++) {
         const worker = new Worker(workerpath);
         workers.push(worker);
@@ -253,6 +271,7 @@ const { v4: uuidv4 } = require('uuid');
 
         worker.on('error', (error) => {
           console.error(`Worker ${i} error:`, error);
+          handleWorkerExit(worker, 1);
         });
       
         worker.on("exit", (code) => {
@@ -262,7 +281,7 @@ const { v4: uuidv4 } = require('uuid');
           }
         });
       }
-      console.log(`total heap memory after creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
+      // console.log(`total heap memory after creating workers: ${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`);
 
       const assignTask = (worker, workerIndex, data) => {
         workerStatus[workerIndex] = false;
@@ -324,13 +343,10 @@ const { v4: uuidv4 } = require('uuid');
       };
 
       try {
-        if(!clientDetails){
-          reject()
-        }
           finalInvoice.businessID = clientDetails.businessId;
           finalInvoice.clientName = clientDetails.clientName;
-          const licenseCount = getLicenceCount(clientDetails);
-          const didInfo = getDidInfo(clientDetails);
+          const licenseCount = await getLicenceCount(clientDetails);
+          const didInfo = await getDidInfo(clientDetails);
           let requestBody = getRequestBody();
           finalInvoice.month = requestBody.month;
           finalInvoice.year = requestBody.year;
@@ -347,10 +363,9 @@ const { v4: uuidv4 } = require('uuid');
 
           clearTimeout(timeoutId);
 
-          // if (!response.ok) {
-          //   throw new Error(`HTTP error! Status: ${response.status}`);
-          // }
-
+          if (!response.ok) {
+            console.log(`HTTP error! Status: ${response.status}`);
+          }
 
           let buffer = '';
 
@@ -364,19 +379,21 @@ const { v4: uuidv4 } = require('uuid');
               // console.time("processing 1 batch")
               batchCompleted=false
             }
-
-            buffer+= chunk
-            let newlineIndex;
-            while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
-              const batch = buffer.slice(0, newlineIndex);
-              buffer = buffer.slice(newlineIndex + 1);
-              if (batch.length>0){
-                console.log(count++);
-                processData(batch);
-                // console.timeEnd("processing 1 batch")
-              } 
+            try {
+              buffer+= chunk
+              let newlineIndex;
+              while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+                const batch = buffer.slice(0, newlineIndex);
+                buffer = buffer.slice(newlineIndex + 1);
+                if (batch.length>0){
+                  console.log(count++);
+                  processData(batch);
+                  // console.timeEnd("processing 1 batch")
+                } 
+              }
+            } catch (error) {
+              console.log("error occured in processing a batch: ",error)
             }
-
           });
 
           response.body.on('end', () => {
@@ -395,6 +412,7 @@ const { v4: uuidv4 } = require('uuid');
           response.body.on('error', (error) => {
             console.error('Stream error:', error);
           });
+          
       } catch (error) {
           cronTasks.unshift(clientDetails);
           console.log("adding failed task to the array", clientDetails)
@@ -416,7 +434,11 @@ const getClientDetails = async ()=>{
     const db= await connectDB();
     const collection =await db.collection('clientDetails')
     let response = await collection.find({}).toArray()
-    // console.log("client details fetched: ", response);
+    if(response.length>0){
+      console.log("client details fetched:",response );
+    }else{
+      console.log("failed to fetch client details");
+    }
     return response;
   } catch (error) {
     console.log("error occured in fetching client details: ", error)
@@ -449,11 +471,17 @@ setInterval(async () => {
 
 async function scheduletask(){
   const clients = await getClientDetails()
-  clients.forEach(client => {
-    cron.schedule(client.cronDate, () => {
-    cronTasks.push(client);
-    console.log(`Task added for client ${client.clientName}`);
-    });
-  }); 
+  if(clients.length>0){
+    clients.forEach(client => {
+      // cron.schedule(client.cronDate, () => {
+      cronTasks.push(client);
+      console.log(`Task added for client ${client.clientName}`);
+      // });
+    }); 
+  }else{
+    console.log("Client details not found")
+  }
 }
 scheduletask()
+
+// cron.schedule("0 0 1 1 * *",scheduletask)
